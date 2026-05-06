@@ -52,7 +52,26 @@ X-Agent-Kit-Secret: <shared secret>     # required in prod
 
 `output` is the only field the runner asserts against. `metadata` is captured for the report but never graded.
 
-Errors: HTTP non-2xx is an automatic fail. The agent should still return JSON `{ "error": "...", "metadata": {...} }` so cost is captured even on failure.
+### What counts as a pass
+
+The runner only considers a record passed when **all** of the following hold:
+
+1. HTTP 2xx response.
+2. Body is a JSON object (not array, not scalar).
+3. Body contains an `output` key (its value may be `null`, but the key must exist).
+4. Every judge in the record returns `passed: true`.
+
+Anything else is a fail. `cost_usd` is captured regardless so spend is tracked even on contract violations or agent-side errors.
+
+### Error response shape
+
+When the agent fails internally, return HTTP 5xx **or** HTTP 200 with this shape:
+
+```json
+{ "error": "human-readable description", "metadata": { "cost_usd": 0.0001, "...": "..." } }
+```
+
+The runner treats both as a failure. Returning 200 + `error` is preferred when the agent ran the model but rejected the result, because it lets cost telemetry flow through unchanged.
 
 ## Dataset format (JSONL, one record per line)
 
@@ -97,6 +116,9 @@ agent-kit run \
   --dataset decipher/evals/session_planner.jsonl \
   --endpoint https://decipher-two.vercel.app/api/internal/eval/session-planner \
   --secret-env INTERNAL_API_SECRET
+
+# CI-friendly machine-readable output:
+agent-kit run --dataset ... --endpoint ... --json > results.json
 ```
 
 Output:
@@ -126,6 +148,26 @@ Exit code: 0 if all pass, 1 if any fail.
 4. Fix the agent. Eval now passes. Future regressions blocked.
 
 The dataset *is* the asset. The runner is incidental.
+
+## Try it locally
+
+```bash
+git clone https://github.com/b1rdmania/agent-kit
+cd agent-kit
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Boot the reference stub agent:
+uvicorn examples.stub_server:app --port 8765 &
+
+# Run the sample dataset against it:
+agent-kit run --dataset examples/sample.jsonl --endpoint http://localhost:8765/agent
+
+# Run the test suite:
+pytest
+```
+
+The stub server in `examples/stub_server.py` is the canonical reference implementation of the contract — copy its shape when wiring agent-kit into a new project.
 
 ## License
 

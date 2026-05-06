@@ -16,6 +16,13 @@ dependencies = [
   "rich>=13.7",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+]
+
 [project.scripts]
 agent-kit = "agent_kit.cli:main"
 

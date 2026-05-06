@@ -111,19 +111,57 @@ def run(
                 )
                 continue
 
-            passed, judge_results = _evaluate(record, response_json)
-            cost = response_json.get("metadata", {}).get("cost_usd")
-            if isinstance(cost, (int, float)):
+            if not isinstance(response_json, dict):
+                results.append(
+                    EvalResult(
+                        record=record,
+                        passed=False,
+                        duration_ms=duration_ms,
+                        cost_usd=None,
+                        judge_results=[],
+                        error=f"response not a JSON object (got {type(response_json).__name__})",
+                    )
+                )
+                continue
+
+            metadata = response_json.get("metadata") or {}
+            cost = metadata.get("cost_usd") if isinstance(metadata, dict) else None
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool):
                 total_cost += float(cost)
+                cost_value: float | None = float(cost)
+            else:
+                cost_value = None
+
+            if "output" not in response_json:
+                err = response_json.get("error")
+                detail = (
+                    f"agent returned error: {err}"
+                    if err
+                    else "response missing 'output' key (contract violation)"
+                )
+                results.append(
+                    EvalResult(
+                        record=record,
+                        passed=False,
+                        duration_ms=duration_ms,
+                        cost_usd=cost_value,
+                        judge_results=[],
+                        error=detail,
+                        response_metadata=metadata if isinstance(metadata, dict) else {},
+                    )
+                )
+                continue
+
+            passed, judge_results = _evaluate(record, response_json)
 
             results.append(
                 EvalResult(
                     record=record,
                     passed=passed,
                     duration_ms=duration_ms,
-                    cost_usd=cost if isinstance(cost, (int, float)) else None,
+                    cost_usd=cost_value,
                     judge_results=judge_results,
-                    response_metadata=response_json.get("metadata", {}),
+                    response_metadata=metadata if isinstance(metadata, dict) else {},
                 )
             )
 
